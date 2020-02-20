@@ -1,0 +1,515 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "batchAccountName": {
+            "type": "string",
+            "defaultValue": "[concat('batchac',parameters('location'))]",
+            "minLength": 3,
+            "maxLength": 120
+        },
+        "acrName": {
+            "type": "string",
+            "defaultValue": "azureacrname",
+            "minLength": 5,
+            "maxLength": 50,
+            "metadata": {
+                "description": "Name of your Azure Container Registry"
+            }
+        },
+        "dockerImageName": {
+            "type": "string",
+            "defaultValue": "compute:latest",
+            "minLength": 3,
+            "maxLength": 50,
+            "metadata": {
+                "description": "Name of your Docker Image with :latest tag"
+            }
+        },
+        "BatchPoolVMSize": {
+            "type": "string",
+            "defaultValue": "Standard_E16s_v3",
+            "allowedValues": [
+                "Standard_E8s_v3",
+                "Standard_E16s_v3",
+                "Standard_E20s_v3",
+                "Standard_E32s_v3",
+                "Standard_E48s_v3",
+                "Standard_E64s_v3"
+            ]
+        },
+        "storageName": {
+            "type": "string",
+            "defaultValue": "eventhpcsa",
+            "minLength": 3,
+            "maxLength": 24
+        },
+        "containerPrefix": {
+            "type": "string",
+            "defaultValue": "event"
+        },
+        "appName": {
+            "type": "string",
+            "defaultValue": "[concat('FuncApp-', uniqueString(resourceGroup().id))]",
+            "metadata": {
+                "description": "The name of you Web Site."
+            }
+        },
+        "functionName":{
+            "type": "string",
+            "defaultValue": "BatchMakeEventGridTrigger",
+            "metadata": {
+                "description" : "Function App Name"
+            }
+        },
+        "storageSKU": {
+            "type": "string",
+            "defaultValue": "Standard_LRS",
+            "allowedValues": [
+                "Standard_LRS",
+                "Standard_GRS",
+                "Standard_RAGRS",
+                "Standard_ZRS",
+                "Premium_LRS",
+                "Premium_ZRS",
+                "Standard_GZRS",
+                "Standard_RAGZRS"
+            ]
+        },
+        "acrAdminUserEnabled": {
+            "type": "bool",
+            "defaultValue": true,
+            "metadata": {
+                "description": "Enable admin user that have push / pull permission to the registry."
+            }
+    },
+        "acrSku": {
+            "type": "string",
+            "metadata": {
+                "description": "Tier of your Azure Container Registry."
+            },
+            "defaultValue": "Standard",
+            "allowedValues": [
+                "Basic",
+                "Standard",
+                "Premium"
+            ]
+    },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]"
+        }
+    },
+    "variables": {
+        "functionUrl": "[concat('https://', variables('FunctionAppName'),'.azurewebsites.net/runtime/webhooks/EventGrid?functionName=', parameters('functionName'),'&code=')]",
+        "functionAppName": "[parameters('appName')]",
+        "networkSecurityGroups_lbgenomics_nsg_name": "[concat(parameters('batchAccountName'),'-nsg')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "apiVersion": "2019-04-01",
+            "name": "[parameters('storageName')]",
+            "location": "[parameters('location')]",
+            "sku": {
+                "name": "[parameters('storageSKU')]"
+            },
+            "kind": "StorageV2",
+            "properties": {
+                "supportsHttpsTrafficOnly": true
+            },
+            "resources": [
+                {
+                    "name": "[concat('default/', parameters('containerPrefix'),'in')]",
+                    "type": "blobServices/containers",
+                    "apiVersion": "2019-04-01",
+                    "dependsOn": [
+                        "[parameters('storageName')]"
+                    ]
+                },
+                {
+                    "name": "[concat('default/', parameters('containerPrefix'),'out')]",
+                    "type": "blobServices/containers",
+                    "apiVersion": "2019-04-01",
+                    "dependsOn": [
+                        "[parameters('storageName')]"
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "[concat(parameters('batchAccountName'),'-vnet')]",
+            "type": "Microsoft.Network/VirtualNetworks",
+            "apiVersion": "2019-09-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat(parameters('batchAccountName'),'-nsg')]"
+            ],
+            "tags": {},
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "10.2.0.0/16"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "default",
+                        "properties": {
+                            "addressPrefix": "10.2.0.0/24",
+                            "networkSecurityGroup": {
+                                "id": "[resourceId('Microsoft.Network/networkSecurityGroups',variables('networkSecurityGroups_lbgenomics_nsg_name'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2019-02-01",
+            "name": "[concat(parameters('batchAccountName'),'-nsg')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "securityRules": [
+                    {
+                        "name": "Batch",
+                        "properties": {
+                            "protocol": "TCP",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "29876-29877",
+                            "sourceAddressPrefix": "BatchNodeManagement",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "SSH",
+                        "properties": {
+                            "protocol": "TCP",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "22",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "*",
+                            "access": "Allow",
+                            "priority": 110,
+                            "direction": "Inbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    },
+                    {
+                        "name": "Storage",
+                        "properties": {
+                            "protocol": "TCP",
+                            "sourcePortRange": "*",
+                            "destinationPortRange": "443",
+                            "sourceAddressPrefix": "*",
+                            "destinationAddressPrefix": "Storage",
+                            "access": "Allow",
+                            "priority": 100,
+                            "direction": "Outbound",
+                            "sourcePortRanges": [],
+                            "destinationPortRanges": [],
+                            "sourceAddressPrefixes": [],
+                            "destinationAddressPrefixes": []
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "apiVersion": "2019-11-01",
+            "name": "[concat(concat(parameters('batchAccountName'),'-nsg'), '/Batch')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroups_lbgenomics_nsg_name'))]"
+            ],
+            "properties": {
+                "protocol": "TCP",
+                "sourcePortRange": "*",
+                "destinationPortRange": "29876-29877",
+                "sourceAddressPrefix": "BatchNodeManagement",
+                "destinationAddressPrefix": "*",
+                "access": "Allow",
+                "priority": 100,
+                "direction": "Inbound",
+                "sourcePortRanges": [],
+                "destinationPortRanges": [],
+                "sourceAddressPrefixes": [],
+                "destinationAddressPrefixes": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "apiVersion": "2019-11-01",
+            "name": "[concat(variables('networkSecurityGroups_lbgenomics_nsg_name'), '/SSH')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroups_lbgenomics_nsg_name'))]"
+            ],
+            "properties": {
+                "protocol": "TCP",
+                "sourcePortRange": "*",
+                "destinationPortRange": "22",
+                "sourceAddressPrefix": "*",
+                "destinationAddressPrefix": "*",
+                "access": "Allow",
+                "priority": 110,
+                "direction": "Inbound",
+                "sourcePortRanges": [],
+                "destinationPortRanges": [],
+                "sourceAddressPrefixes": [],
+                "destinationAddressPrefixes": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+            "apiVersion": "2019-11-01",
+            "name": "[concat(variables('networkSecurityGroups_lbgenomics_nsg_name'), '/Storage')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroups_lbgenomics_nsg_name'))]"
+            ],
+            "properties": {
+                "protocol": "TCP",
+                "sourcePortRange": "*",
+                "destinationPortRange": "443",
+                "sourceAddressPrefix": "*",
+                "destinationAddressPrefix": "Storage",
+                "access": "Allow",
+                "priority": 100,
+                "direction": "Outbound",
+                "sourcePortRanges": [],
+                "destinationPortRanges": [],
+                "sourceAddressPrefixes": [],
+                "destinationAddressPrefixes": []
+            }
+        },
+        {
+            "type": "Microsoft.Batch/batchAccounts",
+            "name": "[parameters('batchAccountName')]",
+            "apiVersion": "2015-12-01",
+            "location": "[parameters('location')]",
+            "tags": {
+                "ObjectName": "[parameters('batchAccountName')]"
+            },
+            "properties": {
+                "autoStorage": {
+                "storageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageName'))]"
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Batch/batchAccounts/pools",
+            "name": "[concat(parameters('batchAccountName'),'/',parameters('batchAccountName'),'pool')]",
+            "apiVersion": "2019-08-01",
+            "properties": {
+                "vmSize": "[parameters('BatchPoolVMSize')]",
+                "deploymentConfiguration": {
+                    "virtualMachineConfiguration": {
+                        "imageReference": {
+                            "publisher": "microsoft-azure-batch",
+                            "offer": "ubuntu-server-container",
+                            "sku": "16-04-lts",
+                            "version": "latest"
+                        },
+                        "nodeAgentSkuId": "batch.node.ubuntu 16.04",
+                        "containerConfiguration": {
+                            "type": "DockerCompatible",
+                            "containerImageNames": [
+                                "[concat(parameters('acrName'), '.azurecr.io','/', parameters('dockerImageName'))]"
+                            ],
+                            "containerRegistries": [
+                                {
+                                    "registryServer": "[concat(parameters('acrName'), '.azurecr.io')]",
+                                    "username": "[parameters('acrName')]",
+                                    "password": "[listCredentials(resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName')), providers('Microsoft.ContainerRegistry', 'registries').apiVersions[1]).passwords[0].value]"
+                                }
+                            ]
+                            },
+                            "dataDisks": [
+                                {
+                                    "lun": "1",
+                                    "caching": "readWrite",
+                                    "diskSizeGB": "1024",
+                                    "storageAccountType": "Premium_LRS"
+                                }
+                    ]
+                    }
+                },
+                "scaleSettings": {
+                    "autoScale": {
+                        "evaluationInterval": "PT5M",
+                        "formula": "startingNumberOfVMs = 0;maxNumberofVMs = 25;pendingTaskSamplePercent = $PendingTasks.GetSamplePercent(180 * TimeInterval_Second);pendingTaskSamples = pendingTaskSamplePercent < 70 ? startingNumberOfVMs : avg($PendingTasks.GetSample(180 * TimeInterval_Second));$TargetLowPriorityNodes=min(maxNumberofVMs, pendingTaskSamples);$NodeDeallocationOption = taskcompletion;"
+                    }
+                },
+                "networkConfiguration": {
+                    "subnetId": "[concat(resourceId('Microsoft.Network/virtualNetworks',concat(parameters('batchAccountName'),'-vnet')), '/subnets/default')]"
+                },
+                "startTask": {
+                    "commandLine": "/bin/bash -c 'echo -e \"n\\np\\n1\\n\\n\\nw\" | sudo fdisk /dev/sdc && mkfs.ext4 /dev/sdc1 && mkdir -p /scratch && mount -t ext4 /dev/sdc1 /scratch && chmod -R 777 /scratch'",
+                    "waitForSuccess":true,
+                    "userIdentity": {
+                        "autoUser": {
+                            "elevationLevel": "Admin",
+                            "scope": "Pool"
+                        }
+                    }
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Batch/batchAccounts', parameters('batchAccountName'))]",
+                "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
+                "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroups_lbgenomics_nsg_name'))]",
+                "[resourceId('Microsoft.Network/VirtualNetworks',concat(parameters('batchAccountName'),'-vnet'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2019-08-01",
+            "name": "[parameters('appName')]",
+            "kind": "functionapp,linux",
+            "dependsOn": [
+                "[resourceId('Microsoft.Batch/batchAccounts', parameters('batchAccountName'))]",
+                "[resourceId('microsoft.insights/components/', concat(parameters('appName'),'appInsights'))]"
+            ],
+            "location": "[parameters('location')]",
+            "properties": {
+                "enabled": true,
+                "name": "[parameters('appName')]",
+                "reserved": true,
+                "siteConfig": {
+                    "reserved": true,
+                    "appSettings": [
+                        {
+                            "name": "FUNCTIONS_WORKER_RUNTIME",
+                            "value": "python"
+                        },
+                        {
+                            "name": "APPINSIGHTS_INSTRUMENTATIONKEY",
+                            "value": "[reference(concat('microsoft.insights/components/', concat(parameters('appName'),'appInsights'))).InstrumentationKey]"
+                        },
+                        {
+                            "name": "AzureWebJobsStorage",
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', parameters('storageName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value)]"
+                        },
+                        {
+                            "name": "FUNCTIONS_EXTENSION_VERSION",
+                            "value": "~2"
+                        },
+                        {
+                            "name": "BATCH_ACCOUNT_KEY",
+                            "value": "[listKeys(resourceId('Microsoft.Batch/batchAccounts', parameters('batchAccountName')), providers('Microsoft.Batch', 'batchAccounts').apiVersions[0]).primary]"
+                        },
+                        {
+                            "name": "BATCH_ACCOUNT_NAME",
+                            "value": "[parameters('batchAccountName')]"
+                        },
+                        {
+                            "name": "BATCH_ACCOUNT_URL",
+                            "value": "[concat('https://', reference(concat('Microsoft.Batch/batchAccounts/', parameters('batchAccountName'))).accountEndpoint)]"
+                        },
+                        {
+                            "name": "BATCH_DOCKER_IMAGE",
+                            "value": "[concat(parameters('acrName'), '.azurecr.io','/', parameters('dockerImageName'))]"
+                        },
+                        {
+                            "name": "BATCH_POOL_ID",
+                            "value": "[concat(parameters('batchAccountName'),'pool')]"
+                        },
+                        {
+                            "name": "OUTPUT_CONTAINER",
+                            "value": "[concat(parameters('containerPrefix'),'out')]"
+                        },
+                        {
+                            "name": "STORAGE_ACCOUNT_NAME",
+                            "value": "[parameters('storageName')]"
+                        },
+                        {
+                            "name": "STORAGE_KEY",
+                            "value": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', parameters('storageName')), providers('Microsoft.Storage', 'storageAccounts').apiVersions[0]).keys[0].value]"
+                        }
+                    ]
+                }
+            }
+        },
+        {
+        "type": "Microsoft.Storage/storageAccounts/providers/eventSubscriptions",
+        "name": "[concat(parameters('storageName'), '/Microsoft.EventGrid/', parameters('storageName'),'sub')]",
+        "apiVersion": "2020-01-01-preview",
+        "properties": {
+            "destination": {
+            "endpointType": "AzureFunction",
+            "properties": {
+                "resourceId": "[resourceId('Microsoft.Web/sites/functions/', parameters('AppName'), parameters('functionName'))]"
+              }
+            },
+            "filter": {
+            "subjectBeginsWith": "[concat('/blobServices/default/containers/',parameters('containerPrefix'),'in','/blobs/')]",
+            "subjectEndsWith": ".zip",
+            "isSubjectCaseSensitive": false,
+            "includedEventTypes": [
+                "Microsoft.Storage.BlobCreated"
+                    ],
+                    "advancedFilters": []
+                },
+                "labels": [],
+                "eventDeliverySchema": "EventGridSchema"
+            },
+            "dependsOn": [
+                        "[resourceId('Microsoft.Web/sites', parameters('appName'))]"
+            ]
+        },
+        {
+        "apiVersion": "2014-04-01",
+        "name": "[concat(parameters('appName'),'appInsights')]",
+        "type": "Microsoft.Insights/components",
+        "location": "East US",
+        "tags": {
+            "[concat('hidden-link:', resourceGroup().id, '/providers/Microsoft.Web/sites/', parameters('appName'))]": "Resource",
+            "displayName": "AppInsightsComponent"
+            },
+        "properties": {
+            "applicationId": "[concat(parameters('appName'),'appInsights')]"
+            }
+        },
+        {
+            "name": "[parameters('acrName')]",
+            "type": "Microsoft.ContainerRegistry/registries",
+            "apiVersion": "2019-05-01",
+            "location": "[parameters('location')]",
+            "comments": "Container registry for storing docker images",
+            "tags": {
+                "displayName": "Container Registry",
+                "container.registry": "[parameters('acrName')]"
+            },
+            "sku": {
+                "name": "[parameters('acrSku')]",
+                "tier": "[parameters('acrSku')]"
+            },
+            "properties": {
+                "adminUserEnabled": "[parameters('acrAdminUserEnabled')]"
+            }
+        }
+    ],
+    "outputs": {
+        "storageIEndpoint": {
+            "type": "object",
+            "value": "[reference(parameters('storageName')).primaryEndpoints]"
+        },
+        "acrLoginServer": {
+            "value": "[reference(resourceId('Microsoft.ContainerRegistry/registries',parameters('acrName')),'2019-05-01').loginServer]",
+            "type": "string"
+        }
+    }
+}
