@@ -1,4 +1,4 @@
-FROM alzhang/spectrum-master-rstudio:v1.4
+FROM nvidia/cuda:latest
 
 RUN apt update && apt install build-essential unzip pigz pv -y && apt clean
 RUN pip3 install azure-cli snakemake
