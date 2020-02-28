@@ -9,4 +9,6 @@ After git cloning the kit, deploy the `storage-event-batch.json` in Azure Resour
 Upload the function from `StorageEventBatchFunction` in the Azure Function created in the ARM deployment
 Deploy your docker image into the Azure Container Registry
 
-
+## Execution
+The EventGrid subscription operates on a filtered message uploading a *.zip file. The compressed archive will be extracted on the execute node.
+![Alt text](imgs/egs.png?raw=true "EventGrid Subscription Example")
