@@ -10,5 +10,6 @@ Upload the function from `StorageEventBatchFunction` in the Azure Function creat
 Deploy your docker image into the Azure Container Registry
 
 ## Execution
-The EventGrid subscription operates on a filtered message uploading a *.zip file. The compressed archive will be extracted on the execute node.
+The EventGrid subscription operates on a filtered message uploading a *.zip file. The compressed archive will be extracted on the execute node. The event metrics panel will show you when an upload event fires and passes through to Azure Functions and Azure Batch
 ![Alt text](imgs/egs.png?raw=true "EventGrid Subscription Example")
+You can further track detailed messages in the Azure Function logs as well as insights panel.
