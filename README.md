@@ -5,6 +5,7 @@
 
 ## Deployment
 After git cloning the kit, deploy the `storage-event-batch.json` in Azure Resource Manager filling in the relevant values. The ARM template is set to create if resource doesnt exist. As a tip keep track of the ids of the resources you deploy as you will need them later.
+![Alt text](imgs/template.png?raw=true "ARM Template")
 
 Upload the function from `StorageEventBatchFunction` in the Azure Function created in the ARM deployment
 Deploy your docker image into the Azure Container Registry
