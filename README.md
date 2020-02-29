@@ -15,3 +15,5 @@ Deploy your docker image into the Azure Container Registry
 The EventGrid subscription operates on a filtered message uploading a *.zip file. The compressed archive will be extracted on the execute node. The event metrics panel will show you when an upload event fires and passes through to Azure Functions and Azure Batch
 ![Alt text](imgs/egs.png?raw=true "EventGrid Subscription Example")
 You can further track detailed messages in the Azure Function logs as well as insights panel.
+
+Upload a file into the input storage container and the cascade of events through the event grid and azure function should successfully submit a task in the job in the batch account.
