@@ -17,3 +17,5 @@ The EventGrid subscription operates on a filtered message uploading a *.zip file
 You can further track detailed messages in the Azure Function logs as well as insights panel.
 
 Upload a file into the input storage container and the cascade of events through the event grid and azure function should successfully submit a task in the job in the batch account.
+
+You can use the [Azure Storage Explorer](https://azure.microsoft.com/en-us/features/storage-explorer/) and [Batch Explorer](https://azure.github.io/BatchExplorer/) to monitor job progress.
