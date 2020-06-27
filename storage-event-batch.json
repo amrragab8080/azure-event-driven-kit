@@ -368,7 +368,6 @@
             },
             "dependsOn": [
                 "[resourceId('Microsoft.Batch/batchAccounts', parameters('batchAccountName'))]",
-                "[resourceId('Microsoft.ContainerRegistry/registries', parameters('acrName'))]",
                 "[resourceId('Microsoft.Network/networkSecurityGroups', variables('networkSecurityGroups_nsg_name'))]",
                 "[resourceId('Microsoft.Network/VirtualNetworks',concat(parameters('batchAccountName'),'-vnet'))]"
             ]
