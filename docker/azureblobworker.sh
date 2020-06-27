@@ -22,16 +22,24 @@ function finish(){
     echo "BATCH JOB DONE"
 }
 
-echo "DOWNLOADING INPUT FILES..."
+echo "DOWNLOADING MAIN INPUT FILES..."
 cd $SCRATCHDIR
 mkdir -p $PWD/$JOBDIR
+ln -sfn $SCRATCHDIR $AZ_BATCH_NODE_MOUNTS_DIR/scratch
 export JOBPATH=$PWD/$JOBDIR
 
 az storage blob download --container-name $4 --name $5 --file $JOBPATH/input.zip --output json
 
 unzip $JOBPATH/input.zip -d $JOBPATH
+FILE=$JOBPATH/blob
+if [ -f "$FILE" ]; then
+    echo "DOWNLOADING ADDITIONAL INPUT FILE(S)..."
+    while IFS= read -r line; do azcopy cp $line $SCRATCHDIR --recursive=true --from-to BlobLocal; done < $FILE
+fi
+
+cd $JOBPATH
+
 echo "STARTING UP WORKFLOW..."
-cd $JOBPATH/
 
 NUMCORES=`expr $(nproc) \/ 2`
 
